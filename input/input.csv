@@ -1,0 +1,171 @@
+"title","seniority","context","includeCore","overwrite"
+"Python Developer","Fresher","Python Developer
+Primary Job Responsibilities:
+The Python Developer is an entry-level role for recent graduates (0-1 years) who want to build backend services and automation in Python. The candidate will work in a small agile team, pair with senior developers, and ship small, well-tested features from the first month.
+Responsibilities:
+API Development – Build and maintain REST endpoints using FastAPI or Flask, with request validation and clear error handling.
+Database Work – Write SQL queries and simple data models against PostgreSQL, and help with schema changes under guidance.
+Testing & Quality – Write unit tests with pytest, fix reported bugs, and follow PEP 8 and team code-review feedback.
+Automation – Create small Python scripts for data cleanup, report generation and repetitive internal tasks.
+Learning & Collaboration – Use Git branches and pull requests, join daily stand-ups, and document the modules you build.
+Job Requirements:
+•
+B.E./B.Tech/BCA/MCA (or final-year student) in Computer Science, IT or a related field
+Solid Python fundamentals: data structures, OOP, file handling, exceptions
+Basic understanding of REST APIs and SQL
+Working knowledge of Git and GitHub
+Academic or personal projects (e.g., an API, a CRUD app, a scraper) are a plus
+Good problem-solving skills and willingness to learn","True","False"
+"Java Developer","Fresher","Java Developer
+Primary Job Responsibilities:
+The Java Developer is an entry-level position for fresh graduates who have a strong base in core Java and want to grow into enterprise application development. Mentorship and structured onboarding are provided.
+Responsibilities:
+Feature Development – Implement small features and bug fixes in Java and Spring Boot applications under senior guidance.
+Database Integration – Write JDBC/JPA queries and work with MySQL or PostgreSQL tables used by the application.
+Code Quality – Write JUnit test cases, follow coding standards, and address peer code-review comments.
+Debugging – Read logs, reproduce issues, and help trace defects to their root cause.
+Team Practices – Use Git and Maven, attend sprint ceremonies, and keep task status and documentation updated.
+Job Requirements:
+•
+B.E./B.Tech/BCA/MCA (or final-year student) in Computer Science, IT or a related field
+Strong core Java: OOP, collections, exception handling, multithreading basics
+Basic knowledge of Spring Boot and REST APIs
+Understanding of SQL and relational databases
+Good grasp of data structures and algorithms
+Internship or project experience in Java is a plus","True","False"
+"Frontend Developer","Fresher","Frontend Developer
+Primary Job Responsibilities:
+The Frontend Developer will join the UI team to learn how production web interfaces are built. This role suits freshers who enjoy turning designs into clean, responsive, accessible pages.
+Responsibilities:
+UI Development – Convert Figma designs into responsive pages using HTML, CSS and JavaScript/React components.
+API Integration – Connect UI components to REST APIs, handle loading and error states, and display data correctly.
+Cross-Browser & Device Testing – Check layouts on different screen sizes and browsers and fix visual bugs.
+Code Practices – Build reusable components, use Git for version control, and respond to review feedback.
+Collaboration – Work with designers and backend developers to clarify requirements and improve usability.
+Job Requirements:
+•
+B.E./B.Tech/BCA/MCA/Diploma (or final-year student) in Computer Science, IT or a related field
+Good knowledge of HTML5, CSS3 (Flexbox/Grid) and modern JavaScript (ES6+)
+Basic experience with React (components, props, state, hooks)
+Familiarity with fetching data from APIs
+A small portfolio or GitHub projects showing your UI work is a plus
+Attention to detail and eagerness to learn","True","False"
+"Data Analyst","Fresher","Data Analyst
+Primary Job Responsibilities:
+The Data Analyst is an entry-level role for graduates who like working with numbers and turning data into clear insights. The candidate will support the analytics team with reporting, cleaning and visualization tasks.
+Responsibilities:
+Data Preparation – Collect, clean and validate datasets from spreadsheets and databases using Excel, SQL and Python (pandas).
+Reporting – Build and refresh weekly and monthly dashboards in Power BI or Tableau.
+Analysis – Run basic analysis such as trends, comparisons and summary statistics, and present findings in simple language.
+Data Quality – Flag missing, duplicate or inconsistent records and document the fixes applied.
+Stakeholder Support – Answer ad-hoc data requests from business teams with guidance from senior analysts.
+Job Requirements:
+•
+B.E./B.Tech/B.Sc/BCA/MCA (or final-year student) in Computer Science, Statistics, Maths or a related field
+Working knowledge of SQL (joins, group by, filters) and Excel
+Basic Python with pandas or similar
+Understanding of basic statistics
+Exposure to Power BI or Tableau through coursework or projects is a plus
+Clear communication and curiosity about data","True","False"
+"Software Test Engineer","Fresher","Software Test Engineer
+Primary Job Responsibilities:
+The Software Test Engineer is an entry-level QA role for fresh graduates who want to build a career in software quality. The candidate will learn manual and automated testing on live product releases.
+Responsibilities:
+Test Design – Read requirements and write clear test cases, including positive, negative and edge-case scenarios.
+Test Execution – Run manual and regression tests on web applications and report results accurately.
+Defect Tracking – Log bugs in JIRA with steps to reproduce, screenshots and severity, and retest fixes.
+API & Automation Basics – Test APIs with Postman and help automate simple test flows using Selenium.
+Team Collaboration – Join sprint planning and daily stand-ups, and work closely with developers to clarify issues.
+Job Requirements:
+•
+B.E./B.Tech/BCA/MCA (or final-year student) in Computer Science, IT or a related field
+Understanding of SDLC, STLC and common testing types
+Basic knowledge of SQL and how web applications work
+Familiarity with Postman or Selenium is a plus
+Strong attention to detail and logical thinking
+Clear written communication for bug reports","True","False"
+"DevOps Engineer","Fresher","DevOps Engineer
+Primary Job Responsibilities:
+The DevOps Engineer is an entry-level role for graduates interested in build automation, deployments and cloud infrastructure. The candidate will support the DevOps team and learn production practices step by step.
+Responsibilities:
+CI/CD Support – Maintain and troubleshoot build and deployment pipelines in GitHub Actions or Jenkins.
+Containers – Write and update Dockerfiles and help run services in containers.
+Scripting – Automate routine tasks using Bash or Python scripts.
+Monitoring – Watch dashboards and alerts, and escalate issues with clear notes.
+Cloud Basics – Assist with setting up and managing basic AWS resources (EC2, S3, IAM) under supervision.
+Job Requirements:
+•
+B.E./B.Tech/BCA/MCA (or final-year student) in Computer Science, IT or a related field
+Comfort with Linux command line and Git
+Basic understanding of networking, HTTP and CI/CD concepts
+Basic scripting in Bash or Python
+Cloud certification or hands-on lab experience (AWS/Azure) is a plus
+Willingness to learn and take on-call learning shifts later","True","False"
+"Cybersecurity Analyst","Fresher","Cybersecurity Analyst
+Primary Job Responsibilities:
+The Cybersecurity Analyst is an entry-level position for graduates with a foundation in security and networking. The candidate will help the security team monitor systems, triage alerts and follow incident procedures.
+Responsibilities:
+Monitoring – Review alerts and logs from SIEM and security tools and identify suspicious activity.
+Incident Support – Assist in triage, record incident details, and follow the escalation playbook.
+Vulnerability Management – Help run scans, list findings, and track fixes with the relevant teams.
+Security Awareness – Support secure configuration checks and basic web security reviews using OWASP Top 10.
+Documentation – Maintain clear reports on alerts, incidents and security checks performed.
+Job Requirements:
+•
+B.E./B.Tech/BCA/MCA (or final-year student) in Computer Science, IT, Cybersecurity or a related field
+Understanding of networking (TCP/IP, DNS, HTTP), operating systems and basic cryptography
+Knowledge of common threats such as phishing, SQL injection and XSS
+Security virtual internships, labs or certifications (e.g., Security+, CEH foundations) are a plus
+Analytical mindset and attention to detail
+Willingness to work in shifts if required","True","False"
+"Machine Learning Engineer","Fresher","Machine Learning Engineer
+Primary Job Responsibilities:
+The Machine Learning Engineer is an entry-level role for graduates who have built ML projects and want to grow into applied machine learning. The candidate will work with data scientists and engineers on real datasets and models.
+Responsibilities:
+Data Preparation – Clean, transform and split datasets, and create features using Python and pandas.
+Model Building – Train and evaluate baseline models with scikit-learn and report metrics such as accuracy, precision and recall.
+Experimentation – Track experiments in notebooks, compare results, and document what worked and what did not.
+Deployment Support – Help wrap trained models into simple APIs using FastAPI.
+Learning – Read papers and documentation, and share findings in team knowledge sessions.
+Job Requirements:
+•
+B.E./B.Tech/M.Sc/MCA (or final-year student) in Computer Science, AI/ML, Data Science or a related field
+Strong Python with NumPy, pandas and scikit-learn
+Understanding of core ML concepts: regression, classification, overfitting, cross-validation
+Basic statistics and linear algebra
+Projects or Kaggle work that show end-to-end problem solving are a plus
+Curiosity and clear communication of results","True","False"
+"Full Stack Developer","Fresher","Full Stack Developer
+Primary Job Responsibilities:
+The Full Stack Developer is an entry-level role for graduates comfortable with both frontend and backend basics. The candidate will build features end to end, from the database and API to the user interface, with senior guidance.
+Responsibilities:
+Frontend – Build React components and pages that consume backend APIs.
+Backend – Develop simple REST endpoints using FastAPI, Node.js or Spring Boot, with input validation.
+Database – Design basic tables and write SQL queries in PostgreSQL.
+Quality – Write basic tests, fix bugs found in QA, and follow code-review feedback.
+Delivery – Use Git, deploy to staging, and update task status and documentation during sprints.
+Job Requirements:
+•
+B.E./B.Tech/BCA/MCA (or final-year student) in Computer Science, IT or a related field
+Working knowledge of JavaScript and React
+Basic backend skills in Python, Java or Node.js
+Understanding of SQL, REST APIs and Git
+Good grasp of data structures and algorithms
+At least one full-stack project on GitHub is a plus","True","False"
+"Database Engineer","Fresher","Database Engineer
+Primary Job Responsibilities:
+The Database Engineer is an entry-level role for graduates who enjoy working with data models, queries and pipelines. The candidate will support the data team in maintaining reliable databases and simple ETL jobs.
+Responsibilities:
+Query Development – Write and optimize SQL queries, views and stored procedures for reporting and applications.
+ETL Support – Help build and monitor simple pipelines that load CSV, JSON and XML files into database tables.
+Data Validation – Check loaded data for accuracy, duplicates and missing values, and report issues.
+Maintenance – Assist with backups, indexing and routine housekeeping under senior supervision.
+Documentation – Keep table definitions, data flows and change notes up to date.
+Job Requirements:
+•
+B.E./B.Tech/BCA/MCA (or final-year student) in Computer Science, IT or a related field
+Strong SQL fundamentals: joins, aggregations, subqueries, indexes
+Understanding of relational data modeling and normalization
+Basic Python or scripting for data loading
+Exposure to PostgreSQL, MySQL, or Snowflake is a plus
+Accuracy, patience and a structured approach to problem solving","True","False"
