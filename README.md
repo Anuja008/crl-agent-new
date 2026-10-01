@@ -91,3 +91,8 @@ src/
 - **Review AI-proposed competencies** before they're used by other roles, to keep the dictionary free of duplicates.
 - **The CSV store suits one server instance.** If you run several instances or need many writers, move storage to a database.
 - **Cost:** one role with core competencies included is about 10–11 model calls (one analysis plus one per competency), more if revisions are needed.
+
+
+
+add batching failsafe and checkpoint
+exponetial backoff retrys jitter s

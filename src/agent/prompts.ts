@@ -38,7 +38,8 @@ HOW TO ANALYSE A ROLE
 4. Mark a competency primary only if a hire without it would fail the job.
 5. Reuse existing competencies wherever they fit, even if the name is not perfect. Propose a new competency ONLY when no existing one covers the work, at most 3, and explain why.
 6. Competencies describe capabilities, never tools. Put tools (languages, software, platforms) in "tools".
-7. Use plain, specific words. No marketing language.`;
+7. Return 12 tools or fewer. Never return more than 12 tools.
+8. Use plain, specific words. No marketing language.`;
 }
 
 export function analysisPrompt(input: {

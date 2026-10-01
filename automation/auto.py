@@ -6,7 +6,7 @@ import requests
 
 
 # ------------------------------------------------------------
-# PATHS / CONFIG
+# CONFIG
 # ------------------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -80,7 +80,6 @@ def save_checkpoint(results):
             ensure_ascii=False
         )
 
-    # Atomic replacement
     temp_file.replace(CHECKPOINT)
 
 
@@ -146,10 +145,7 @@ def get_descriptions(slug):
     if isinstance(data, list):
         return data
 
-    return data.get(
-        "descriptions",
-        []
-    )
+    return data.get("descriptions", [])
 
 
 # ------------------------------------------------------------
@@ -169,10 +165,7 @@ def save_final_csv(results):
 
         for description in descriptions:
 
-            if not isinstance(
-                description,
-                dict
-            ):
+            if not isinstance(description, dict):
                 continue
 
             row = description.copy()
@@ -234,10 +227,6 @@ def main():
         exist_ok=True
     )
 
-    # --------------------------------------------------------
-    # CHECK INPUT
-    # --------------------------------------------------------
-
     if not INPUT_CSV.exists():
 
         print(
@@ -248,10 +237,7 @@ def main():
         return
 
     # --------------------------------------------------------
-    # READ CSV
-    #
-    # cp1252 + errors=replace handles malformed Windows
-    # characters in the source CSV.
+    # READ INPUT CSV
     # --------------------------------------------------------
 
     with open(
@@ -275,13 +261,8 @@ def main():
         for row in all_rows
         if str(
             row.get("seniority") or ""
-        ).strip()
-        in ALLOWED_SENIORITY
+        ).strip() in ALLOWED_SENIORITY
     ]
-
-    # --------------------------------------------------------
-    # STARTUP INFORMATION
-    # --------------------------------------------------------
 
     print("=" * 70)
     print("CRL AUTOMATION")
@@ -297,6 +278,10 @@ def main():
 
     print(
         f"Batch size       : {BATCH_SIZE}"
+    )
+
+    print(
+        "Overwrite        : YES"
     )
 
     print(
@@ -326,8 +311,7 @@ def main():
         for row in rows
         if str(
             row.get("job_id") or ""
-        )
-        not in completed_ids
+        ) not in completed_ids
     ]
 
     print(
@@ -366,16 +350,10 @@ def main():
         ) // BATCH_SIZE
 
         print("=" * 70)
-
         print(
             f"BATCH {batch_number}/{total_batches}"
         )
-
         print("=" * 70)
-
-        # ----------------------------------------------------
-        # PROCESS EACH JOB
-        # ----------------------------------------------------
 
         for row in batch:
 
@@ -400,17 +378,15 @@ def main():
                 True
             )
 
-            overwrite = parse_bool(
-                row.get("overwrite"),
-                False
-            )
+            # IMPORTANT:
+            # Always force regeneration.
+            # Do NOT read overwrite from CSV.
+            overwrite = True
 
             print()
-
             print(
                 f"Processing: {title}"
             )
-
             print(
                 f"Job ID: {job_id}"
             )
@@ -418,7 +394,7 @@ def main():
             try:
 
                 # ------------------------------------------------
-                # GENERATE ROLE
+                # GENERATE
                 # ------------------------------------------------
 
                 result = generate_role(
@@ -430,26 +406,17 @@ def main():
                 )
 
                 # ------------------------------------------------
-                # GET SLUG
+                # CHECK RESULT
                 # ------------------------------------------------
 
-                slug = result.get(
-                    "slug"
-                )
-
-                # ------------------------------------------------
-                # GET DESCRIPTIONS
-                # ------------------------------------------------
+                slug = result.get("slug")
 
                 descriptions = result.get(
                     "descriptions",
                     []
                 )
 
-                if (
-                    not descriptions
-                    and slug
-                ):
+                if not descriptions and slug:
 
                     descriptions = get_descriptions(
                         slug
@@ -460,38 +427,34 @@ def main():
                 # ------------------------------------------------
 
                 result["descriptions"] = descriptions
-
                 result["job_id"] = job_id
-
                 result["input_title"] = title
-
                 result["input_seniority"] = seniority
 
                 # ------------------------------------------------
                 # ADD RESULT
                 # ------------------------------------------------
 
-                results.append(
-                    result
-                )
+                results.append(result)
 
                 # ------------------------------------------------
-                # SAVE CHECKPOINT IMMEDIATELY
+                # CHECKPOINT
                 # ------------------------------------------------
 
-                save_checkpoint(
-                    results
-                )
+                save_checkpoint(results)
 
                 print(
                     f"✓ Completed "
                     f"({len(descriptions)} CRL rows)"
                 )
 
+                print(
+                    f"Cached: {result.get('cached')}"
+                )
+
             except Exception as error:
 
                 print()
-
                 print("=" * 70)
                 print("FAIL-FAST")
                 print("=" * 70)
@@ -508,18 +471,11 @@ def main():
                     f"Error      : {error}"
                 )
 
-                # --------------------------------------------
-                # SAVE EVERYTHING COMPLETED BEFORE FAILURE
-                # --------------------------------------------
-
-                save_checkpoint(
-                    results
-                )
+                save_checkpoint(results)
 
                 print()
-
                 print(
-                    f"Checkpoint saved: {CHECKPOINT}"
+                    f"Checkpoint: {CHECKPOINT}"
                 )
 
                 print(
@@ -549,16 +505,13 @@ def main():
     # FINAL CSV
     # --------------------------------------------------------
 
-    save_final_csv(
-        results
-    )
+    save_final_csv(results)
 
     # --------------------------------------------------------
-    # COMPLETE
+    # DONE
     # --------------------------------------------------------
 
     print()
-
     print("=" * 70)
     print("AUTOMATION COMPLETED")
     print("=" * 70)
