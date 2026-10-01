@@ -1,49 +1,128 @@
 import csv
 import json
-import os
+from pathlib import Path
+
 import requests
 
-API_URL = "http://localhost:3000"
 
-INPUT_CSV = "../input/ jobs_output_hiring-cafe.csv"
-OUTPUT_JSON = "../output/crl_results.json"
-OUTPUT_CSV = "../output/crl_results.csv"
+# ------------------------------------------------------------
+# PATHS / CONFIG
+# ------------------------------------------------------------
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+INPUT_CSV = BASE_DIR / "input" / "jobs_output_hiring-cafe.csv"
+
+OUTPUT_DIR = BASE_DIR / "output"
+
+CHECKPOINT = OUTPUT_DIR / "checkpoint.json"
+OUTPUT_JSON = OUTPUT_DIR / "crl_results.json"
+OUTPUT_CSV = OUTPUT_DIR / "crl_results.csv"
+
+API_URL = "http://localhost:3000/roles/generate"
+DESCRIPTIONS_URL = "http://localhost:3000/roles"
+
+BATCH_SIZE = 8
+
+MAX_TITLE_LENGTH = 120
+MAX_CONTEXT_LENGTH = 6000
 
 ALLOWED_SENIORITY = {"Junior", "Intern"}
 
-# Keep the context reasonably sized for the CRL agent
-MAX_CONTEXT_LENGTH = 6000
+
+# ------------------------------------------------------------
+# HELPERS
+# ------------------------------------------------------------
+
+def clean_title(value):
+    return str(value or "").strip()[:MAX_TITLE_LENGTH]
 
 
-def clean_context(context):
-    context = context.strip()
-
-    if len(context) > MAX_CONTEXT_LENGTH:
-        context = context[:MAX_CONTEXT_LENGTH]
-
-    return context
+def clean_context(value):
+    return str(value or "").strip()[:MAX_CONTEXT_LENGTH]
 
 
-def generate_role(row):
+def parse_bool(value, default=True):
+    if value is None or str(value).strip() == "":
+        return default
+
+    return str(value).strip().lower() in {
+        "true",
+        "1",
+        "yes",
+        "y"
+    }
+
+
+# ------------------------------------------------------------
+# CHECKPOINT
+# ------------------------------------------------------------
+
+def save_checkpoint(results):
+
+    OUTPUT_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    temp_file = CHECKPOINT.with_suffix(".tmp")
+
+    with open(
+        temp_file,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            results,
+            f,
+            indent=2,
+            ensure_ascii=False
+        )
+
+    # Atomic replacement
+    temp_file.replace(CHECKPOINT)
+
+
+def load_checkpoint():
+
+    if not CHECKPOINT.exists():
+        return []
+
+    with open(
+        CHECKPOINT,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        return json.load(f)
+
+
+# ------------------------------------------------------------
+# API
+# ------------------------------------------------------------
+
+def generate_role(
+    title,
+    seniority,
+    context,
+    include_core,
+    overwrite
+):
 
     payload = {
-        "title": row["title"].strip(),
-        "seniority": row["seniority"].strip(),
-        "context": clean_context(row["context"]),
-        "includeCore": row["includeCore"].strip().lower() == "true",
-        "overwrite": row["overwrite"].strip().lower() == "true"
+        "title": title,
+        "seniority": seniority,
+        "context": context,
+        "includeCore": include_core,
+        "overwrite": overwrite,
     }
 
     response = requests.post(
-        f"{API_URL}/roles/generate",
+        API_URL,
         json=payload,
         timeout=600
     )
-
-    if not response.ok:
-        print("\n    API ERROR:")
-        print(f"    Status: {response.status_code}")
-        print(f"    Response: {response.text[:2000]}\n")
 
     response.raise_for_status()
 
@@ -52,8 +131,11 @@ def generate_role(row):
 
 def get_descriptions(slug):
 
+    if not slug:
+        return []
+
     response = requests.get(
-        f"{API_URL}/roles/{slug}/descriptions",
+        f"{DESCRIPTIONS_URL}/{slug}/descriptions",
         timeout=120
     )
 
@@ -64,135 +146,443 @@ def get_descriptions(slug):
     if isinstance(data, list):
         return data
 
-    return data.get("descriptions", [])
+    return data.get(
+        "descriptions",
+        []
+    )
 
+
+# ------------------------------------------------------------
+# FINAL CSV
+# ------------------------------------------------------------
+
+def save_final_csv(results):
+
+    rows = []
+
+    for result in results:
+
+        descriptions = result.get(
+            "descriptions",
+            []
+        )
+
+        for description in descriptions:
+
+            if not isinstance(
+                description,
+                dict
+            ):
+                continue
+
+            row = description.copy()
+
+            row["job_id"] = result.get(
+                "job_id",
+                ""
+            )
+
+            row["input_title"] = result.get(
+                "input_title",
+                ""
+            )
+
+            row["input_seniority"] = result.get(
+                "input_seniority",
+                ""
+            )
+
+            rows.append(row)
+
+    if not rows:
+        return
+
+    fields = []
+
+    for row in rows:
+
+        for key in row:
+
+            if key not in fields:
+                fields.append(key)
+
+    with open(
+        OUTPUT_CSV,
+        "w",
+        newline="",
+        encoding="utf-8-sig"
+    ) as f:
+
+        writer = csv.DictWriter(
+            f,
+            fieldnames=fields,
+            extrasaction="ignore"
+        )
+
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+# ------------------------------------------------------------
+# MAIN
+# ------------------------------------------------------------
 
 def main():
 
-    os.makedirs("../output", exist_ok=True)
+    OUTPUT_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-    results = []
-    all_descriptions = []
+    # --------------------------------------------------------
+    # CHECK INPUT
+    # --------------------------------------------------------
+
+    if not INPUT_CSV.exists():
+
+        print(
+            "Input CSV not found:",
+            INPUT_CSV
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # READ CSV
+    #
+    # cp1252 + errors=replace handles malformed Windows
+    # characters in the source CSV.
+    # --------------------------------------------------------
 
     with open(
         INPUT_CSV,
         "r",
-        encoding="utf-8-sig",
+        encoding="cp1252",
+        errors="replace",
         newline=""
-    ) as file:
+    ) as f:
 
-        reader = csv.DictReader(file)
+        reader = csv.DictReader(f)
 
-        rows = [
-            row
-            for row in reader
-            if row["seniority"].strip() in ALLOWED_SENIORITY
+        all_rows = list(reader)
+
+    # --------------------------------------------------------
+    # FILTER JUNIOR + INTERN
+    # --------------------------------------------------------
+
+    rows = [
+        row
+        for row in all_rows
+        if str(
+            row.get("seniority") or ""
+        ).strip()
+        in ALLOWED_SENIORITY
+    ]
+
+    # --------------------------------------------------------
+    # STARTUP INFORMATION
+    # --------------------------------------------------------
+
+    print("=" * 70)
+    print("CRL AUTOMATION")
+    print("=" * 70)
+
+    print(
+        f"Total jobs       : {len(all_rows)}"
+    )
+
+    print(
+        f"Junior + Intern  : {len(rows)}"
+    )
+
+    print(
+        f"Batch size       : {BATCH_SIZE}"
+    )
+
+    print(
+        "Fail-fast        : YES"
+    )
+
+    print(
+        "Retry            : NO"
+    )
+
+    print()
+
+    # --------------------------------------------------------
+    # LOAD CHECKPOINT
+    # --------------------------------------------------------
+
+    results = load_checkpoint()
+
+    completed_ids = {
+        str(result.get("job_id"))
+        for result in results
+        if result.get("job_id")
+    }
+
+    remaining = [
+        row
+        for row in rows
+        if str(
+            row.get("job_id") or ""
+        )
+        not in completed_ids
+    ]
+
+    print(
+        f"Already completed : {len(completed_ids)}"
+    )
+
+    print(
+        f"Remaining         : {len(remaining)}"
+    )
+
+    print()
+
+    # --------------------------------------------------------
+    # PROCESS BATCHES
+    # --------------------------------------------------------
+
+    for batch_start in range(
+        0,
+        len(remaining),
+        BATCH_SIZE
+    ):
+
+        batch = remaining[
+            batch_start:
+            batch_start + BATCH_SIZE
         ]
 
-    print(f"Total Junior/Intern roles: {len(rows)}")
+        batch_number = (
+            batch_start // BATCH_SIZE
+        ) + 1
 
-    for index, row in enumerate(rows, 1):
+        total_batches = (
+            len(remaining)
+            + BATCH_SIZE
+            - 1
+        ) // BATCH_SIZE
 
-        title = row["title"].strip()
-        seniority = row["seniority"].strip()
+        print("=" * 70)
 
         print(
-            f"\n[{index}/{len(rows)}] "
-            f"{seniority} - {title}"
+            f"BATCH {batch_number}/{total_batches}"
         )
 
-        try:
+        print("=" * 70)
 
-            result = generate_role(row)
+        # ----------------------------------------------------
+        # PROCESS EACH JOB
+        # ----------------------------------------------------
 
-            slug = result.get("slug")
+        for row in batch:
 
-            descriptions = result.get(
-                "descriptions",
-                []
+            job_id = str(
+                row.get("job_id") or ""
+            ).strip()
+
+            title = clean_title(
+                row.get("title")
             )
 
-            if not descriptions and slug:
+            seniority = str(
+                row.get("seniority") or ""
+            ).strip()
 
-                print(
-                    "    Fetching CRL descriptions..."
+            context = clean_context(
+                row.get("context")
+            )
+
+            include_core = parse_bool(
+                row.get("includeCore"),
+                True
+            )
+
+            overwrite = parse_bool(
+                row.get("overwrite"),
+                False
+            )
+
+            print()
+
+            print(
+                f"Processing: {title}"
+            )
+
+            print(
+                f"Job ID: {job_id}"
+            )
+
+            try:
+
+                # ------------------------------------------------
+                # GENERATE ROLE
+                # ------------------------------------------------
+
+                result = generate_role(
+                    title,
+                    seniority,
+                    context,
+                    include_core,
+                    overwrite
                 )
 
-                descriptions = get_descriptions(slug)
+                # ------------------------------------------------
+                # GET SLUG
+                # ------------------------------------------------
 
-            result["descriptions"] = descriptions
+                slug = result.get(
+                    "slug"
+                )
 
-            results.append(result)
+                # ------------------------------------------------
+                # GET DESCRIPTIONS
+                # ------------------------------------------------
 
-            all_descriptions.extend(
-                descriptions
-            )
+                descriptions = result.get(
+                    "descriptions",
+                    []
+                )
 
-            print(
-                f"    ✓ {len(descriptions)} CRL rows"
-            )
+                if (
+                    not descriptions
+                    and slug
+                ):
 
-        except Exception as e:
+                    descriptions = get_descriptions(
+                        slug
+                    )
 
-            print(
-                f"    ✗ Failed: {e}"
-            )
+                # ------------------------------------------------
+                # ATTACH METADATA
+                # ------------------------------------------------
 
-            results.append({
-                "job_id": row["job_id"],
-                "title": title,
-                "seniority": seniority,
-                "error": str(e)
-            })
+                result["descriptions"] = descriptions
 
-    # Save JSON
+                result["job_id"] = job_id
+
+                result["input_title"] = title
+
+                result["input_seniority"] = seniority
+
+                # ------------------------------------------------
+                # ADD RESULT
+                # ------------------------------------------------
+
+                results.append(
+                    result
+                )
+
+                # ------------------------------------------------
+                # SAVE CHECKPOINT IMMEDIATELY
+                # ------------------------------------------------
+
+                save_checkpoint(
+                    results
+                )
+
+                print(
+                    f"✓ Completed "
+                    f"({len(descriptions)} CRL rows)"
+                )
+
+            except Exception as error:
+
+                print()
+
+                print("=" * 70)
+                print("FAIL-FAST")
+                print("=" * 70)
+
+                print(
+                    f"Failed job : {title}"
+                )
+
+                print(
+                    f"Job ID     : {job_id}"
+                )
+
+                print(
+                    f"Error      : {error}"
+                )
+
+                # --------------------------------------------
+                # SAVE EVERYTHING COMPLETED BEFORE FAILURE
+                # --------------------------------------------
+
+                save_checkpoint(
+                    results
+                )
+
+                print()
+
+                print(
+                    f"Checkpoint saved: {CHECKPOINT}"
+                )
+
+                print(
+                    "Stopping automation."
+                )
+
+                return
+
+    # --------------------------------------------------------
+    # FINAL JSON
+    # --------------------------------------------------------
+
     with open(
         OUTPUT_JSON,
         "w",
         encoding="utf-8"
-    ) as file:
+    ) as f:
 
         json.dump(
             results,
-            file,
+            f,
             indent=2,
             ensure_ascii=False
         )
 
-    # Save CSV
-    if all_descriptions:
+    # --------------------------------------------------------
+    # FINAL CSV
+    # --------------------------------------------------------
 
-        fields = []
+    save_final_csv(
+        results
+    )
 
-        for row in all_descriptions:
+    # --------------------------------------------------------
+    # COMPLETE
+    # --------------------------------------------------------
 
-            for key in row:
+    print()
 
-                if key not in fields:
-                    fields.append(key)
-
-        with open(
-            OUTPUT_CSV,
-            "w",
-            newline="",
-            encoding="utf-8-sig"
-        ) as file:
-
-            writer = csv.DictWriter(
-                file,
-                fieldnames=fields
-            )
-
-            writer.writeheader()
-            writer.writerows(all_descriptions)
-
-    print("\n==============================")
+    print("=" * 70)
     print("AUTOMATION COMPLETED")
-    print("==============================")
-    print(f"Roles processed: {len(rows)}")
-    print(f"JSON: {OUTPUT_JSON}")
-    print(f"CSV : {OUTPUT_CSV}")
+    print("=" * 70)
 
+    print(
+        f"Completed jobs : {len(results)}"
+    )
+
+    print(
+        f"JSON           : {OUTPUT_JSON}"
+    )
+
+    print(
+        f"CSV            : {OUTPUT_CSV}"
+    )
+
+    print(
+        f"Checkpoint     : {CHECKPOINT}"
+    )
+
+
+# ------------------------------------------------------------
+# ENTRY POINT
+# ------------------------------------------------------------
 
 if __name__ == "__main__":
     main()
