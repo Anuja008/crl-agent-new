@@ -80,7 +80,6 @@ export class RoleAgentService {
       schema: roleAnalysisSchema,
       validator: roleAnalysisValidator,
       temperature: 0.3,
-      mock: () => mockAnalysis(title, competencies),
     });
 
     // Resolve competency references and give new competencies real IDs
@@ -214,7 +213,6 @@ export class RoleAgentService {
         }),
         schema: levelSetSchema,
         validator: levelSetValidator,
-        mock: () => mockLevels(analysis.roleTitle, target.competency, analysis.tools),
       });
       const issues = checkLevelSet(set, keywords);
       if (!best || issues.length < best.issues.length) best = { set, issues };
@@ -234,39 +232,4 @@ function ruleNote(c: Competency, crl: number, seniority: string): string {
   if (c.id === 'C06' && crl === 3) notes.push('Needs a multi-day task with check-ins');
   if (c.type === 'Role' && crl === 5) notes.push('Needs real work evidence (internship or multi-day simulation)');
   return notes.join('; ');
-}
-
-/* ---------- Mock outputs (LLM_PROVIDER=mock) ---------- */
-
-function mockAnalysis(title: string, dict: Competency[]): RoleAnalysis {
-  const roleComps = dict.filter((c) => c.type === 'Role');
-  const t = title.toLowerCase();
-  const picked = roleComps.filter((c) => c.name.toLowerCase().split(/\W+/).some((w) => w.length > 4 && t.includes(w)));
-  const chosen = (picked.length >= 2 ? picked : roleComps.slice(0, 3)).slice(0, 3);
-  return {
-    roleTitle: title,
-    family: 'Mock family',
-    objective: `Delivers the core work of a ${title} to the team's standards.`,
-    tasks: chosen.flatMap((c) => [
-      { task: `Prepare ${c.name.toLowerCase()} work for a ${title} brief`, competencyRef: c.id },
-      { task: `Review ${c.name.toLowerCase()} output with the team lead`, competencyRef: c.id },
-    ]),
-    roleCompetencies: chosen.map((c, i) => ({ ref: c.id, primary: i === 0, whyNeeded: `Needed for ${title} tasks` })),
-    newCompetencies: [],
-    tools: ['Excel', 'Jira'],
-  };
-}
-
-function mockLevels(role: string, c: Competency, tools: string[]): LevelSet {
-  const n = c.name.toLowerCase();
-  const tool = tools[0] ?? 'the team tools';
-  return {
-    levels: [
-      { crl: 1, description: `Explains the main ideas behind ${n} as used by a ${role}, and describes when each applies in daily work.`, observableSigns: ['Explains key terms correctly', 'Gives a relevant example'], typicalTask: `Short viva on ${n} for a ${role}` },
-      { crl: 2, description: `Completes a practised ${n} task for a ${role} using a known template in ${tool}, and asks a reviewer when inputs change.`, observableSigns: ['Output matches the template', 'Asks when inputs change'], typicalTask: `Familiar ${n} exercise in ${tool}` },
-      { crl: 3, description: `Handles an unseen ${n} problem from a ${role} brief without being guided to the answer, and checks any AI-drafted parts before using them.`, observableSigns: ['Reaches a workable result alone', 'Catches an error in AI output'], typicalTask: `Timed unseen ${n} case` },
-      { crl: 4, description: `Takes a small ${role} brief to a finished, checked result for ${n}, then justifies the key decisions and trade-offs in a live review.`, observableSigns: ['Every part of the brief is covered', 'Justifies two decisions'], typicalTask: `Take-home ${n} deliverable with live defence` },
-      { crl: 5, description: `Carries out the ${n} part of a ${role} job in real work over several weeks, meeting review standards and escalating blockers early.`, observableSigns: ['Work passes review', 'Blockers raised before deadlines'], typicalTask: `Internship or multi-day simulation` },
-    ],
-  };
 }

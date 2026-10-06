@@ -13,8 +13,6 @@ export interface JsonRequest<T> {
   /** Zod schema: checks the JSON really matches before we use it. */
   validator: ZodType<T>;
   temperature?: number;
-  /** Used only when LLM_PROVIDER=mock, so the pipeline can be tested without an API key. */
-  mock: () => T;
 }
 
 const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
@@ -36,7 +34,7 @@ export class LlmService {
     if (this.provider === 'gemini') {
       this.model = config.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
       const apiKey = config.get<string>('GEMINI_API_KEY');
-      if (!apiKey) throw new Error('GEMINI_API_KEY is not set. Set it, or use LLM_PROVIDER=mock.');
+      if (!apiKey) throw new Error('GEMINI_API_KEY is not set.');
       this.client = new GoogleGenAI({ apiKey });
     } else if (this.provider === 'azure' || this.provider === 'azure-openai') {
       this.model = config.get<string>('AZURE_OPENAI_MODEL', '');
@@ -45,10 +43,8 @@ export class LlmService {
       if (!this.azureEndpoint || !this.azureApiKey || !this.model) {
         throw new Error('Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and AZURE_OPENAI_MODEL when LLM_PROVIDER=azure.');
       }
-    } else if (this.provider === 'mock') {
-      this.model = 'mock';
     } else {
-      throw new Error(`Unsupported LLM_PROVIDER "${this.provider}". Use gemini, azure, or mock.`);
+      throw new Error(`Unsupported LLM_PROVIDER "${this.provider}". Use gemini or azure.`);
     }
   }
 
@@ -57,8 +53,6 @@ export class LlmService {
   }
 
   async generateJson<T>(req: JsonRequest<T>): Promise<T> {
-    if (this.provider === 'mock') return req.validator.parse(req.mock());
-
     const maxAttempts = 4;
     let lastError: unknown;
     let prompt = req.prompt;
@@ -77,8 +71,12 @@ export class LlmService {
               },
             })).text ?? ''
           : await this.generateAzureJson(req, prompt);
-        const parsed = req.validator.safeParse(JSON.parse(text));
+        const raw = JSON.parse(text);
+        const parsed = req.validator.safeParse(raw);
         if (parsed.success) return parsed.data;
+
+        const normalized = this.normalizeKnownShapeIssues(req, raw, parsed.error);
+        if (normalized !== undefined) return normalized;
 
         // Wrong shape: tell the model what was wrong and try again.
         lastError = parsed.error;
@@ -95,6 +93,36 @@ export class LlmService {
       }
     }
     throw new Error(`[${req.task}] failed after ${maxAttempts} attempts: ${String((lastError as any)?.message ?? lastError)}`);
+  }
+
+  private normalizeKnownShapeIssues<T>(req: JsonRequest<T>, raw: unknown, error: { issues?: Array<{ code?: string; path?: Array<string | number>; maximum?: number | bigint }> }): T | undefined {
+    if (req.task !== 'analyse-role') return undefined;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+
+    const issues = error.issues ?? [];
+    const onlyToolOverflow =
+      issues.length > 0 &&
+      issues.every((issue) =>
+        issue.code === 'too_big' &&
+        issue.maximum === 12 &&
+        issue.path?.length === 1 &&
+        issue.path[0] === 'tools',
+      );
+
+    if (!onlyToolOverflow) return undefined;
+
+    const candidate = { ...(raw as Record<string, unknown>) };
+    if (!Array.isArray(candidate.tools)) return undefined;
+
+    candidate.tools = candidate.tools
+      .filter((tool): tool is string => typeof tool === 'string')
+      .slice(0, 12);
+
+    const repaired = req.validator.safeParse(candidate);
+    if (!repaired.success) return undefined;
+
+    this.logger.warn(`[${req.task}] truncated tools to 12 items after schema overflow`);
+    return repaired.data;
   }
 
   private async generateAzureJson<T>(req: JsonRequest<T>, prompt: string): Promise<string> {

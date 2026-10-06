@@ -10,7 +10,7 @@ cp .env.example .env      # configure the selected provider's credentials
 npm run start:dev
 ```
 
-Set `LLM_PROVIDER` to `azure`, `gemini`, or `mock`. Provider settings are read when Nest starts; restart the app after changing `.env` so the next request uses the selected provider. `mock` runs with placeholder text and no API key.
+Set `LLM_PROVIDER` to `azure` or `gemini`. Provider settings are read when Nest starts; restart the app after changing `.env` so the next request uses the selected provider.
 
 For Azure, set `AZURE_OPENAI_ENDPOINT` to the resource endpoint, `AZURE_OPENAI_API_KEY`, and `AZURE_OPENAI_MODEL` to the deployed model's deployment name. Azure requests use the `/openai/v1/chat/completions` endpoint and strict JSON Schema output. The deployed model must support structured outputs. `LLM_TEMPERATURE` controls temperature for Azure and Gemini (default `0.7`).
 
@@ -59,6 +59,16 @@ If the role already exists and `overwrite` is false, the stored rows are returne
 4. **Check and revise.** Every set is checked for vague words, missing level markers (CRL 3 "without being guided", CRL 4 "justifies", CRL 5 "real work"), near-duplicate levels, length, and whether it mentions the role's real tasks. Failures are sent back to the model to rewrite, up to `MAX_REVISIONS` times. If it still fails, it's saved as `Needs review` with the issues listed.
 5. **Save.** New competencies go into `competency_dictionary.csv`, the role into `role_competency_mapping.csv`, and descriptions into `role_crl_descriptions.csv`.
 
+## Automation
+
+The batch runner lives in `automation/auto.py`.
+
+- It processes the input CSV in batches and uses concurrent workers.
+- It defaults to 6 workers on macOS and 4 workers on other machines, and you can override that with `AUTO_WORKERS`.
+- It retries transient request failures with exponential backoff and jitter.
+- It uses fail-fast behavior for unrecoverable job errors.
+- It saves `output/checkpoint.json` and updates `output/crl_results.csv` after each completed job, so progress is preserved continuously.
+
 ## Files in `data/`
 
 | File | Read or written | Contents |
@@ -79,7 +89,7 @@ src/
     schemas.ts             Gemini response schemas + Zod validators
     quality.ts             Rule-based checks used in the revise loop
     role-agent.service.ts  The analyse → describe → check → save pipeline
-  llm/llm.service.ts       Provider routing: Gemini, Azure OpenAI, JSON validation, retries, mock mode
+  llm/llm.service.ts       Provider routing: Gemini, Azure OpenAI, JSON validation, retries
   dictionary/              Knows the shape of each CSV
   csv/                     Safe CSV reading and writing
   roles/                   REST controller and request validation
@@ -94,5 +104,3 @@ src/
 
 
 
-add batching failsafe and checkpoint
-exponetial backoff retrys jitter s

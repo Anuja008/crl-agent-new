@@ -1,5 +1,10 @@
 import csv
 import json
+import os
+import random
+import platform
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import requests
@@ -23,6 +28,12 @@ API_URL = "http://localhost:3000/roles/generate"
 DESCRIPTIONS_URL = "http://localhost:3000/roles"
 
 BATCH_SIZE = 8
+BATCH_PAUSE_SECONDS = 0.5
+REQUEST_TIMEOUT = 600
+REQUEST_RETRIES = 4
+REQUEST_BACKOFF_SECONDS = 2
+REQUEST_JITTER_SECONDS = 0.75
+DEFAULT_WORKERS = int(os.getenv("AUTO_WORKERS", "6" if platform.system() == "Darwin" else "4"))
 
 MAX_TITLE_LENGTH = 120
 MAX_CONTEXT_LENGTH = 6000
@@ -52,6 +63,12 @@ def parse_bool(value, default=True):
         "yes",
         "y"
     }
+
+
+def retry_sleep(attempt):
+    base = REQUEST_BACKOFF_SECONDS * (2 ** max(0, attempt - 1))
+    jitter = random.uniform(0, REQUEST_JITTER_SECONDS)
+    time.sleep(base + jitter)
 
 
 # ------------------------------------------------------------
@@ -97,62 +114,63 @@ def load_checkpoint():
         return json.load(f)
 
 
-# ------------------------------------------------------------
-# API
-# ------------------------------------------------------------
-
-def generate_role(
-    title,
-    seniority,
-    context,
-    include_core,
-    overwrite
+def request_json(
+    session,
+    method,
+    url,
+    *,
+    json_body=None,
+    timeout=REQUEST_TIMEOUT,
+    retries=REQUEST_RETRIES
 ):
 
-    payload = {
-        "title": title,
-        "seniority": seniority,
-        "context": context,
-        "includeCore": include_core,
-        "overwrite": overwrite,
-    }
+    last_error = None
 
-    response = requests.post(
-        API_URL,
-        json=payload,
-        timeout=600
-    )
+    for attempt in range(1, retries + 1):
 
-    response.raise_for_status()
+        try:
 
-    return response.json()
+            response = session.request(
+                method,
+                url,
+                json=json_body,
+                timeout=timeout
+            )
+
+            if response.ok:
+                return response.json()
+
+            body = response.text.strip()
+            snippet = body[:500] if body else response.reason
+            error = requests.HTTPError(
+                f"{method} {url} failed with {response.status_code}: {snippet}",
+                response=response,
+            )
+
+            if response.status_code not in {429, 500, 502, 503, 504}:
+                raise error
+
+            last_error = error
+
+        except (requests.RequestException, ValueError) as error:
+            response = getattr(error, "response", None)
+            status_code = getattr(response, "status_code", None)
+
+            if isinstance(error, requests.HTTPError) and status_code not in {429, 500, 502, 503, 504}:
+                raise
+
+            last_error = error
+
+        if attempt < retries:
+            retry_sleep(attempt)
+
+    if last_error:
+        raise last_error
+
+    raise RuntimeError(f"{method} {url} failed")
 
 
-def get_descriptions(slug):
-
-    if not slug:
-        return []
-
-    response = requests.get(
-        f"{DESCRIPTIONS_URL}/{slug}/descriptions",
-        timeout=120
-    )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    if isinstance(data, list):
-        return data
-
-    return data.get("descriptions", [])
-
-
-# ------------------------------------------------------------
-# FINAL CSV
-# ------------------------------------------------------------
-
-def save_final_csv(results):
+def build_csv_rows(results):
 
     rows = []
 
@@ -187,6 +205,11 @@ def save_final_csv(results):
 
             rows.append(row)
 
+    return rows
+
+
+def write_csv_rows(rows, mode="w"):
+
     if not rows:
         return
 
@@ -199,8 +222,36 @@ def save_final_csv(results):
             if key not in fields:
                 fields.append(key)
 
+    if mode == "a":
+
+        file_exists = OUTPUT_CSV.exists()
+
+        with open(
+            OUTPUT_CSV,
+            "a",
+            newline="",
+            encoding="utf-8-sig"
+        ) as f:
+
+            writer = csv.DictWriter(
+                f,
+                fieldnames=fields,
+                extrasaction="ignore"
+            )
+
+            if not file_exists or OUTPUT_CSV.stat().st_size == 0:
+                writer.writeheader()
+
+            writer.writerows(rows)
+            f.flush()
+            os.fsync(f.fileno())
+
+        return
+
+    temp_file = OUTPUT_CSV.with_suffix(".tmp")
+
     with open(
-        OUTPUT_CSV,
+        temp_file,
         "w",
         newline="",
         encoding="utf-8-sig"
@@ -214,6 +265,122 @@ def save_final_csv(results):
 
         writer.writeheader()
         writer.writerows(rows)
+        f.flush()
+        os.fsync(f.fileno())
+
+    temp_file.replace(OUTPUT_CSV)
+
+
+def save_csv(results):
+
+    write_csv_rows(build_csv_rows(results), mode="w")
+
+
+def append_csv_result(result):
+
+    write_csv_rows(build_csv_rows([result]), mode="a")
+
+
+# ------------------------------------------------------------
+# API
+# ------------------------------------------------------------
+
+def generate_role(
+    session,
+    title,
+    seniority,
+    context,
+    include_core,
+    overwrite
+):
+
+    payload = {
+        "title": title,
+        "seniority": seniority,
+        "context": context,
+        "includeCore": include_core,
+        "overwrite": overwrite,
+    }
+
+    response = request_json(
+        session,
+        "POST",
+        API_URL,
+        json_body=payload
+    )
+
+    return response
+
+
+def get_descriptions(session, slug):
+
+    if not slug:
+        return []
+
+    data = request_json(
+        session,
+        "GET",
+        f"{DESCRIPTIONS_URL}/{slug}/descriptions",
+        timeout=120,
+    )
+
+    if isinstance(data, list):
+        return data
+
+    return data.get("descriptions", [])
+
+
+def process_row(row):
+
+    job_id = str(
+        row.get("job_id") or ""
+    ).strip()
+
+    title = clean_title(
+        row.get("title")
+    )
+
+    seniority = str(
+        row.get("seniority") or ""
+    ).strip()
+
+    context = clean_context(
+        row.get("context")
+    )
+
+    include_core = parse_bool(
+        row.get("includeCore"),
+        True
+    )
+
+    # IMPORTANT:
+    # Always force regeneration.
+    # Do NOT read overwrite from CSV.
+    overwrite = True
+
+    with requests.Session() as session:
+
+        result = generate_role(
+            session,
+            title,
+            seniority,
+            context,
+            include_core,
+            overwrite
+        )
+
+        slug = result.get("slug")
+        descriptions = result.get("descriptions", [])
+
+        if not descriptions and slug:
+            descriptions = get_descriptions(session, slug)
+
+        result["descriptions"] = descriptions
+        result["job_id"] = job_id
+        result["input_title"] = title
+        result["input_seniority"] = seniority
+
+        return result
 
 
 # ------------------------------------------------------------
@@ -281,6 +448,14 @@ def main():
     )
 
     print(
+        f"Batch pause      : {BATCH_PAUSE_SECONDS}s"
+    )
+
+    print(
+        f"Workers          : {DEFAULT_WORKERS}"
+    )
+
+    print(
         "Overwrite        : YES"
     )
 
@@ -289,7 +464,7 @@ def main():
     )
 
     print(
-        "Retry            : NO"
+        "Retry            : YES (with jitter)"
     )
 
     print()
@@ -355,134 +530,102 @@ def main():
         )
         print("=" * 70)
 
-        for row in batch:
+        if batch_start:
+            time.sleep(BATCH_PAUSE_SECONDS)
 
-            job_id = str(
-                row.get("job_id") or ""
-            ).strip()
+        worker_count = min(DEFAULT_WORKERS, BATCH_SIZE, len(batch))
+        executor = ThreadPoolExecutor(max_workers=worker_count)
+        stop_early = False
 
-            title = clean_title(
-                row.get("title")
-            )
+        try:
 
-            seniority = str(
-                row.get("seniority") or ""
-            ).strip()
+            futures = {}
 
-            context = clean_context(
-                row.get("context")
-            )
+            for row in batch:
+                job_id = str(row.get("job_id") or "").strip()
+                title = clean_title(row.get("title"))
 
-            include_core = parse_bool(
-                row.get("includeCore"),
-                True
-            )
+                print()
+                print(f"Processing: {title}")
+                print(f"Job ID: {job_id}")
 
-            # IMPORTANT:
-            # Always force regeneration.
-            # Do NOT read overwrite from CSV.
-            overwrite = True
+                future = executor.submit(process_row, row)
+                futures[future] = {
+                    "job_id": job_id,
+                    "title": title,
+                }
 
-            print()
-            print(
-                f"Processing: {title}"
-            )
-            print(
-                f"Job ID: {job_id}"
-            )
+            for future in as_completed(futures):
+                meta = futures[future]
 
-            try:
+                try:
+                    result = future.result()
 
-                # ------------------------------------------------
-                # GENERATE
-                # ------------------------------------------------
-
-                result = generate_role(
-                    title,
-                    seniority,
-                    context,
-                    include_core,
-                    overwrite
-                )
-
-                # ------------------------------------------------
-                # CHECK RESULT
-                # ------------------------------------------------
-
-                slug = result.get("slug")
-
-                descriptions = result.get(
-                    "descriptions",
-                    []
-                )
-
-                if not descriptions and slug:
-
-                    descriptions = get_descriptions(
-                        slug
+                    descriptions = result.get(
+                        "descriptions",
+                        []
                     )
 
-                # ------------------------------------------------
-                # ATTACH METADATA
-                # ------------------------------------------------
+                    results.append(result)
 
-                result["descriptions"] = descriptions
-                result["job_id"] = job_id
-                result["input_title"] = title
-                result["input_seniority"] = seniority
+                    save_checkpoint(results)
+                    append_csv_result(result)
 
-                # ------------------------------------------------
-                # ADD RESULT
-                # ------------------------------------------------
+                    print(
+                        f"✓ Completed "
+                        f"({len(descriptions)} CRL rows)"
+                    )
 
-                results.append(result)
+                    print(
+                        f"Cached: {result.get('cached')}"
+                    )
 
-                # ------------------------------------------------
-                # CHECKPOINT
-                # ------------------------------------------------
+                except Exception as error:
 
-                save_checkpoint(results)
+                    print()
+                    print("=" * 70)
+                    print("FAIL-FAST")
+                    print("=" * 70)
 
-                print(
-                    f"✓ Completed "
-                    f"({len(descriptions)} CRL rows)"
-                )
+                    print(
+                        f"Failed job : {meta['title']}"
+                    )
 
-                print(
-                    f"Cached: {result.get('cached')}"
-                )
+                    print(
+                        f"Job ID     : {meta['job_id']}"
+                    )
 
-            except Exception as error:
+                    print(
+                        f"Error      : {error}"
+                    )
 
-                print()
-                print("=" * 70)
-                print("FAIL-FAST")
-                print("=" * 70)
+                    save_checkpoint(results)
+                    save_csv(results)
 
-                print(
-                    f"Failed job : {title}"
-                )
+                    for pending in futures:
+                        if pending is not future:
+                            pending.cancel()
 
-                print(
-                    f"Job ID     : {job_id}"
-                )
+                    executor.shutdown(wait=False, cancel_futures=True)
 
-                print(
-                    f"Error      : {error}"
-                )
+                    print()
+                    print(
+                        f"Checkpoint: {CHECKPOINT}"
+                    )
 
-                save_checkpoint(results)
+                    print(
+                        "Stopping automation."
+                    )
 
-                print()
-                print(
-                    f"Checkpoint: {CHECKPOINT}"
-                )
+                    stop_early = True
+                    break
 
-                print(
-                    "Stopping automation."
-                )
+        finally:
+            if not stop_early:
+                executor.shutdown(wait=True, cancel_futures=False)
 
-                return
+        if stop_early:
+            return
 
     # --------------------------------------------------------
     # FINAL JSON
@@ -505,7 +648,7 @@ def main():
     # FINAL CSV
     # --------------------------------------------------------
 
-    save_final_csv(results)
+    save_csv(results)
 
     # --------------------------------------------------------
     # DONE
