@@ -1,14 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenAI, Schema } from '@google/genai';
 import { ZodType } from 'zod';
+import { Schema } from '../agent/schemas';
 
 export interface JsonRequest<T> {
   /** Short label for logs, e.g. "analyse-role". */
   task: string;
   system: string;
   prompt: string;
-  /** Gemini response schema: forces the model to return this JSON shape. */
+  /** JSON schema used to constrain the model response. */
   schema: Schema;
   /** Zod schema: checks the JSON really matches before we use it. */
   validator: ZodType<T>;
@@ -26,18 +26,17 @@ export class LlmService {
   private readonly provider: string;
   private readonly model: string;
   private readonly temperature: number;
-  private readonly client?: GoogleGenAI;
+  private readonly groqApiKey?: string;
   private readonly azureEndpoint?: string;
   private readonly azureApiKey?: string;
 
   constructor(config: ConfigService) {
-    this.provider = config.get<string>('LLM_PROVIDER', 'gemini').trim().toLowerCase();
-    this.temperature = Number(config.get<string>('LLM_TEMPERATURE', config.get<string>('GEMINI_TEMPERATURE', '0.7')));
-    if (this.provider === 'gemini') {
-      this.model = config.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
-      const apiKey = config.get<string>('GEMINI_API_KEY');
-      if (!apiKey) throw new Error('GEMINI_API_KEY is not set. Set it, or use LLM_PROVIDER=mock.');
-      this.client = new GoogleGenAI({ apiKey });
+    this.provider = config.get<string>('LLM_PROVIDER', 'groq').trim().toLowerCase();
+    this.temperature = Number(config.get<string>('LLM_TEMPERATURE', '0.7'));
+    if (this.provider === 'groq') {
+      this.model = config.get<string>('GROQ_MODEL', 'openai/gpt-oss-20b');
+      this.groqApiKey = config.get<string>('GROQ_API_KEY');
+      if (!this.groqApiKey) throw new Error('GROQ_API_KEY is not set. Set it, or use LLM_PROVIDER=mock.');
     } else if (this.provider === 'azure' || this.provider === 'azure-openai') {
       this.model = config.get<string>('AZURE_OPENAI_MODEL', '');
       this.azureEndpoint = config.get<string>('AZURE_OPENAI_ENDPOINT', '').replace(/\/+$/, '');
@@ -48,7 +47,7 @@ export class LlmService {
     } else if (this.provider === 'mock') {
       this.model = 'mock';
     } else {
-      throw new Error(`Unsupported LLM_PROVIDER "${this.provider}". Use gemini, azure, or mock.`);
+      throw new Error(`Unsupported LLM_PROVIDER "${this.provider}". Use groq, azure, or mock.`);
     }
   }
 
@@ -65,17 +64,8 @@ export class LlmService {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const text = this.provider === 'gemini'
-          ? (await this.client!.models.generateContent({
-              model: this.model,
-              contents: prompt,
-              config: {
-                systemInstruction: req.system,
-                responseMimeType: 'application/json',
-                responseSchema: req.schema,
-                temperature: req.temperature ?? this.temperature,
-              },
-            })).text ?? ''
+        const text = this.provider === 'groq'
+          ? await this.generateGroqJson(req, prompt)
           : await this.generateAzureJson(req, prompt);
         const parsed = req.validator.safeParse(JSON.parse(text));
         if (parsed.success) return parsed.data;
@@ -95,6 +85,35 @@ export class LlmService {
       }
     }
     throw new Error(`[${req.task}] failed after ${maxAttempts} attempts: ${String((lastError as any)?.message ?? lastError)}`);
+  }
+
+  private async generateGroqJson<T>(req: JsonRequest<T>, prompt: string): Promise<string> {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.groqApiKey}` },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          { role: 'system', content: `${req.system}\nReturn an object matching the supplied JSON schema.` },
+          { role: 'user', content: prompt },
+        ],
+        temperature: req.temperature ?? this.temperature,
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: req.task.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64), strict: true, schema: toJsonSchema(req.schema) },
+        },
+      }),
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      const error = new Error(`Groq request failed (${response.status}): ${detail}`) as Error & { status: number };
+      error.status = response.status;
+      throw error;
+    }
+    const result = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const content = result.choices?.[0]?.message?.content;
+    if (!content) throw new Error('Groq returned an empty response.');
+    return content;
   }
 
   private async generateAzureJson<T>(req: JsonRequest<T>, prompt: string): Promise<string> {
@@ -127,7 +146,7 @@ export class LlmService {
   }
 }
 
-/** Convert the subset of Gemini Schema used by this project into Azure JSON Schema. */
+/** Convert the model schema used by this project into standard JSON Schema. */
 function toJsonSchema(schema: Schema): Record<string, unknown> {
   const typeNames: Record<string, string> = {
     TYPE_UNSPECIFIED: 'object', STRING: 'string', NUMBER: 'number', INTEGER: 'integer',

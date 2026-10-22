@@ -10,11 +10,23 @@ cp .env.example .env      # configure the selected provider's credentials
 npm run start:dev
 ```
 
-Set `LLM_PROVIDER` to `azure`, `gemini`, or `mock`. Provider settings are read when Nest starts; restart the app after changing `.env` so the next request uses the selected provider. `mock` runs with placeholder text and no API key.
+Set `LLM_PROVIDER` to `groq`, `azure`, or `mock`. Provider settings are read when Nest starts; restart the app after changing `.env` so the next request uses the selected provider. `mock` runs with placeholder text and no API key.
 
-For Azure, set `AZURE_OPENAI_ENDPOINT` to the resource endpoint, `AZURE_OPENAI_API_KEY`, and `AZURE_OPENAI_MODEL` to the deployed model's deployment name. Azure requests use the `/openai/v1/chat/completions` endpoint and strict JSON Schema output. The deployed model must support structured outputs. `LLM_TEMPERATURE` controls temperature for Azure and Gemini (default `0.7`).
+For Groq, set `GROQ_API_KEY` from [Groq Console](https://console.groq.com/keys). `GROQ_MODEL` defaults to `openai/gpt-oss-20b`, which supports strict JSON Schema output on Groq. The free plan has rate limits, and generating a new role takes about 10–11 model calls; cached roles do not need another generation run. `LLM_TEMPERATURE` controls generation temperature (default `0.7`).
 
-**Gemini model name:** `GEMINI_MODEL` defaults to `gemini-2.5-flash`.
+For Azure, set `AZURE_OPENAI_ENDPOINT` to the resource endpoint, `AZURE_OPENAI_API_KEY`, and `AZURE_OPENAI_MODEL` to the deployed model's deployment name. Azure requests use the `/openai/v1/chat/completions` endpoint and strict JSON Schema output. The deployed model must support structured outputs.
+
+## CRL Career Assistant chatbot
+
+The separate Streamlit chatbot uses the existing CSV datasets, ChromaDB vector store, and the same Groq API key/model as the NestJS service:
+
+```powershell
+python -m pip install -r "AI chatbot\requirements.txt"
+# Set GROQ_API_KEY in the project-root .env file. Set GROQ_MODEL if you want a different model.
+streamlit run "AI chatbot\app.py"
+```
+
+The chatbot reads its role mappings and CRL definitions from `data\`; it does not modify the NestJS API.
 
 ## API
 
@@ -76,10 +88,10 @@ Writes go to a temporary file first and are then renamed, and each file has its 
 src/
   agent/
     prompts.ts             CRL context, system prompts, writing rules
-    schemas.ts             Gemini response schemas + Zod validators
+    schemas.ts             JSON response schemas + Zod validators
     quality.ts             Rule-based checks used in the revise loop
     role-agent.service.ts  The analyse → describe → check → save pipeline
-  llm/llm.service.ts       Provider routing: Gemini, Azure OpenAI, JSON validation, retries, mock mode
+  llm/llm.service.ts       Provider routing: Groq, Azure OpenAI, JSON validation, retries, mock mode
   dictionary/              Knows the shape of each CSV
   csv/                     Safe CSV reading and writing
   roles/                   REST controller and request validation

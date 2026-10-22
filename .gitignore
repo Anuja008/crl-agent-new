@@ -1,5 +1,26 @@
-node_modules
-dist
-*.env
-*.env.example
 
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Build output
+dist/
+build/
+coverage/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python chatbot data/cache
+vector_store/
+*.log
+
+# IDE and OS
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,5 +1,17 @@
-import { Schema, Type } from '@google/genai';
 import { z } from 'zod';
+
+export type Schema = {
+  type: string;
+  description?: string;
+  properties?: Record<string, Schema>;
+  required?: string[];
+  items?: Schema;
+};
+
+export const Type = {
+  OBJECT: 'OBJECT', STRING: 'STRING', NUMBER: 'NUMBER', INTEGER: 'INTEGER',
+  BOOLEAN: 'BOOLEAN', ARRAY: 'ARRAY', NULL: 'NULL',
+} as const;
 
 /* ---------- Step 1: role analysis ---------- */
 
